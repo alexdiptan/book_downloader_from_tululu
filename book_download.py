@@ -1,40 +1,74 @@
+from bs4 import BeautifulSoup
 from pathlib import Path
+from loguru import logger
 
 import requests
+from pathvalidate import sanitize_filename
 
 
-def save_book_to_file(url_content, file_name: str, path_to_save: Path):
-    with open(f"{path_to_save}/{file_name}", "wb") as file:
+def save_book_to_file(url_content, path_to_file: Path):
+    with open(path_to_file, "wb") as file:
         file.write(url_content.content)
 
 
-def check_for_redirect(url_response):
-    if url_response.history:
-        raise requests.HTTPError("Skip redirect page")
+def download_txt(url, filename, folder="books/"):
+    folder_path = Path.cwd() / folder
+
+    if not Path(folder_path).exists():
+        Path.mkdir(folder_path)
+
+    file_path = Path(folder_path, sanitize_filename(filename))
+
+    url_response = get_url_response(url)
+
+    save_book_to_file(url_response, file_path)
+
+    return file_path
+
+
+def get_url_response(url: str):
+    response = requests.get(url)
+    response.raise_for_status()
+
+    if len(response.history) > 1:
+        raise requests.HTTPError()
+
+    return response
 
 
 def main():
-    url = "https://tululu.org/txt.php"
-    book_path = Path.cwd() / "books"
+    url = "https://tululu.org/"
 
     for book_id in range(1, 11):
-        payload = {"id": book_id}
-        filename = f"id_{book_id}.txt"
-        response = requests.get(url, params=payload)
-        response.raise_for_status()
+        book_page_url = f"{url}b{book_id}"
+        logger.info(f"Try to download book from page - {book_page_url}")
 
         try:
-            check_for_redirect(response)
+            url_response = get_url_response(book_page_url)
         except requests.HTTPError:
-            print("This is not a book. Skip.")
+            logger.warning("Redirect url found. Skip page.")
             continue
 
-        if not book_path.exists():
-            Path.mkdir(book_path)
+        soup = BeautifulSoup(url_response.text, "lxml")
 
-        save_book_to_file(response, filename, book_path)
-        print(f"File {filename} saved successfully.")
+        book_title, author = soup.find("body").find("h1").text.split("::")
+        filename = "{}. {}.txt".format(book_id, sanitize_filename(book_title).strip())
+        book_urls = soup.find(class_="d_book").find_all("a")
+
+        txt_book_url = ""
+        for book_url in book_urls:
+            if book_url.text == "скачать txt":
+                txt_book_url = f"{url}{book_url['href']}"
+                continue
+
+        if len(txt_book_url) < 1:
+            logger.warning("Book page does not contain txt link. Skip book.")
+            continue
+
+        download_txt(txt_book_url, filename)
+
+        logger.info(f"File {filename} saved successfully.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
