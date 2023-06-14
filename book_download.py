@@ -55,13 +55,13 @@ def get_url_response(url: str):
     return response
 
 
-def parse_book_page(url, url_response):
+def parse_book_page(url_response):
     soup = BeautifulSoup(url_response.text, "lxml")
 
     book_title, author = soup.find("body").find("h1").text.split("::")
     book_info = soup.find("table", class_="d_book")
     book_urls = book_info.find_all("a")
-    book_img_url = urljoin(url, book_info.find("img")["src"])
+    book_img_url = book_info.find("img")["src"]
     book_img_name = urlsplit(book_img_url).path.split("/")[-1]
     book_comments = soup.find_all(class_="texts")
     comments = [comment.find(class_="black").text for comment in book_comments]
@@ -71,7 +71,7 @@ def parse_book_page(url, url_response):
 
     for book_url in book_urls:
         if book_url.text == "скачать txt":
-            txt_book_url = f'{url}{book_url["href"]}'
+            txt_book_url = book_url["href"]
 
     book_data = {
         "author": author,
@@ -99,7 +99,9 @@ def main():
             logger.warning("Redirect url found. Skip page.")
             continue
 
-        book_info = parse_book_page(base_url, url_response)
+        book_info = parse_book_page(url_response)
+
+        logger.info(f"Book genre: {book_info['genre']}")
 
         filename = "{}. {}.txt".format(
             book_id, sanitize_filename(book_info["title"]).strip()
@@ -109,8 +111,8 @@ def main():
             logger.warning("Book page does not contain txt link. Skip book.")
             continue
 
-        download_txt(book_info["txt_book_url"], filename)
-        download_image(book_info["image_url"], book_info["image_name"])
+        download_txt(urljoin(base_url, book_info["txt_book_url"]), filename)
+        download_image(urljoin(base_url, book_info["image_url"]), book_info["image_name"])
 
         if len(book_info["comments"]) > 0:
             for comment_number, comment in enumerate(book_info["comments"]):
