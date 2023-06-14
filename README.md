@@ -4,8 +4,8 @@
 ## Как установить
 Для корректной работы скрипта, необходимо последовательно выполнить команды:
 ```
-git clone git@github.com:213
-cd 
+git clone https://github.com/alexdiptan/book_downloader_from_tululu.git
+cd book_downloader_from_tululu
 python3 -m venv my_env
 source my_env/bin/activate
 pip3 install -r requirements.txt
@@ -15,7 +15,7 @@ pip3 install -r requirements.txt
 Скрипт принимает на вход начальный и конечный id книги.
 Пример запуска скрипта: 
 ```
-python3 book_download.py 1 3
+python3 main.py 1 3
 ```
 Выполнив команду выше, будут скачаны книги с 1 по 3 включительно.
 
