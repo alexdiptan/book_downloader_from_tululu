@@ -1,4 +1,5 @@
 from urllib.parse import urljoin, urlsplit
+import argparse
 
 from bs4 import BeautifulSoup
 from pathlib import Path
@@ -89,7 +90,20 @@ def parse_book_page(url_response):
 def main():
     base_url = "https://tululu.org/"
 
-    for book_id in range(1, 11):
+    parser = argparse.ArgumentParser(description='Download books from library tululu.org')
+    parser.add_argument(
+        "start_id",
+        type=int,
+        help="Start book id.",
+    )
+    parser.add_argument(
+        "end_id",
+        type=int,
+        help="End book id.",
+    )
+    args = parser.parse_args()
+
+    for book_id in range(args.start_id, args.end_id+1):
         book_page_url = urljoin(base_url, f"b{book_id}")
         logger.info(f"Try to download book from page - {book_page_url}")
 
