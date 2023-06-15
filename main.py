@@ -88,7 +88,7 @@ def book_download(base_url: str, book_id):
         book_id, sanitize_filename(book['title']).strip()
     )
 
-    download_txt(urljoin(base_url, txt_file_url), filename)
+    download_txt(txt_file_url, filename)
     download_image(urljoin(base_url, book["image_url"]), book["image_name"])
 
     logger.info(f"Book genre: {book['genre']}")
