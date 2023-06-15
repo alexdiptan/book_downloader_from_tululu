@@ -14,17 +14,9 @@ def save_to_file(url_content, path_to_file: Path):
         file.write(url_content.content)
 
 
-def get_folder_path(folder_name: str) -> Path:
-    folder_path = Path.cwd() / folder_name
-
-    if not Path(folder_path).exists():
-        Path.mkdir(folder_path)
-
-    return folder_path
-
-
 def download_txt(url, filename, folder="books/"):
-    folder_path = get_folder_path(folder)
+    folder_path = Path.cwd() / folder
+    Path.mkdir(folder_path, exist_ok=True)
 
     file_path = Path(folder_path, sanitize_filename(filename))
 
@@ -36,7 +28,8 @@ def download_txt(url, filename, folder="books/"):
 
 
 def download_image(book_img_url: str, filename, folder="images/"):
-    folder_path = get_folder_path(folder)
+    folder_path = Path.cwd() / folder
+    Path.mkdir(folder_path, exist_ok=True)
     file_path = Path(folder_path, sanitize_filename(filename))
 
     url_response = get_url_response(book_img_url)
@@ -50,35 +43,27 @@ def get_url_response(url: str):
     response = requests.get(url)
     response.raise_for_status()
 
-    if len(response.history) > 1:
-        raise requests.HTTPError()
-
     return response
 
 
-def parse_book_page(url_response):
-    soup = BeautifulSoup(url_response.text, "lxml")
+def check_for_redirect(response):
+    if response.history:
+        raise requests.HTTPError()
 
-    book_title, author = soup.find("body").find("h1").text.split("::")
+
+def parse_book_page(soup):
+    title, author = soup.find("body").find("h1").text.split("::")
     book_info = soup.find("table", class_="d_book")
-    book_urls = book_info.find_all("a")
     book_img_url = book_info.find("img")["src"]
     book_img_name = urlsplit(book_img_url).path.split("/")[-1]
     book_comments = soup.find_all(class_="texts")
     comments = [comment.find(class_="black").text for comment in book_comments]
     genre = soup.find("span", class_="d_book").text.split(":")[1].strip()
 
-    txt_book_url = ""
-
-    for book_url in book_urls:
-        if book_url.text == "скачать txt":
-            txt_book_url = book_url["href"]
-
     book_data = {
         "author": author,
-        "title": book_title,
+        "title": title,
         "genre": genre,
-        "txt_book_url": txt_book_url,
         "image_name": book_img_name,
         "image_url": book_img_url,
         "comments": comments,
@@ -87,9 +72,35 @@ def parse_book_page(url_response):
     return book_data
 
 
-def main():
-    base_url = "https://tululu.org/"
+def book_download(base_url: str, book_id):
+    txt_file_url = urljoin(base_url, f'txt.php?id={book_id}')
+    book_page_url = urljoin(base_url, f"b{book_id}")
 
+    book_file_response = get_url_response(txt_file_url)
+    check_for_redirect(book_file_response)
+
+    book_page_response = get_url_response(book_page_url)
+    soup = BeautifulSoup(book_page_response.text, "lxml")
+
+    book = parse_book_page(soup)
+
+    filename = "{}. {}.txt".format(
+        book_id, sanitize_filename(book['title']).strip()
+    )
+
+    download_txt(urljoin(base_url, txt_file_url), filename)
+    download_image(urljoin(base_url, book["image_url"]), book["image_name"])
+
+    logger.info(f"Book genre: {book['genre']}")
+
+    if book["comments"]:
+        for comment_number, comment in enumerate(book["comments"]):
+            logger.info(f"Comment number: {comment_number + 1}. {comment}")
+
+    return book
+
+
+def main():
     parser = argparse.ArgumentParser(description='Download books from library tululu.org')
     parser.add_argument(
         "start_id",
@@ -104,35 +115,17 @@ def main():
     args = parser.parse_args()
 
     for book_id in range(args.start_id, args.end_id+1):
-        book_page_url = urljoin(base_url, f"b{book_id}")
-        logger.info(f"Try to download book from page - {book_page_url}")
+        base_url = "https://tululu.org/"
+
+        logger.info(f"Try to download book id{book_id}")
 
         try:
-            url_response = get_url_response(book_page_url)
+            book = book_download(base_url, book_id)
         except requests.HTTPError:
             logger.warning("Redirect url found. Skip page.")
             continue
 
-        book_info = parse_book_page(url_response)
-
-        logger.info(f"Book genre: {book_info['genre']}")
-
-        filename = "{}. {}.txt".format(
-            book_id, sanitize_filename(book_info["title"]).strip()
-        )
-
-        if len(book_info["txt_book_url"]) < 1:
-            logger.warning("Book page does not contain txt link. Skip book.")
-            continue
-
-        download_txt(urljoin(base_url, book_info["txt_book_url"]), filename)
-        download_image(urljoin(base_url, book_info["image_url"]), book_info["image_name"])
-
-        if len(book_info["comments"]) > 0:
-            for comment_number, comment in enumerate(book_info["comments"]):
-                logger.info(f"Comment number: {comment_number+1}. {comment}")
-
-        logger.info(f"File {filename} saved successfully.")
+        logger.info(f"File {book['title']} saved successfully.")
 
 
 if __name__ == "__main__":
