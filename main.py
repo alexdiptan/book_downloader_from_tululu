@@ -8,6 +8,8 @@ from loguru import logger
 import requests
 from pathvalidate import sanitize_filename
 
+from time import sleep
+
 
 def save_to_file(url_content, path_to_file: Path):
     with open(path_to_file, "wb") as file:
@@ -51,35 +53,60 @@ def check_for_redirect(response):
         raise requests.HTTPError()
 
 
-def parse_book_page(soup):
-    title, author = soup.find("body").find("h1").text.split("::")
-    book_info = soup.find("table", class_="d_book")
-    book_img_url = book_info.find("img")["src"]
-    book_img_name = urlsplit(book_img_url).path.split("/")[-1]
-    book_comments = soup.find_all(class_="texts")
-    comments = [comment.find(class_="black").text for comment in book_comments]
-    genre = soup.find("span", class_="d_book").text.split(":")[1].strip()
+def get_comments(soup):
+    raw_comments = soup.select(".texts")
+    comments = [comment.select_one(".black").text for comment in raw_comments]
 
-    book_data = {
-        "author": author,
-        "title": title,
-        "genre": genre,
+    return comments
+
+
+def get_title(soup):
+    title = soup.select_one(".ow_px_td h1").text.split("::")
+
+    return title[0].strip()
+
+
+def get_author(soup):
+    author = soup.select_one(".ow_px_td h1").text.split("::")
+
+    return author[1].strip()
+
+
+def get_genre(soup):
+    genre = soup.select_one("span.d_book").text.split(":")[1].strip()
+
+    return genre.strip()
+
+
+def get_book_image(soup):
+    book_img_url = soup.select_one(".bookimage img")["src"]
+
+    return book_img_url
+
+
+def parse_book_page(soup):
+    book_img_url = get_book_image(soup)
+    book_img_name = urlsplit(book_img_url).path.split("/")[-1]
+
+    book = {
+        "author": get_author(soup),
+        "title": get_title(soup),
+        "genre": get_genre(soup),
         "image_name": book_img_name,
         "image_url": book_img_url,
-        "comments": comments,
+        "comments": get_comments(soup),
     }
 
-    return book_data
+    return book
 
 
-def book_download(base_url: str, book_id):
-    txt_file_url = urljoin(base_url, f'txt.php?id={book_id}')
-    book_page_url = urljoin(base_url, f"b{book_id}")
+def book_download(book_url: str, book_id: int):
+    txt_file_url = urljoin(book_url, f'txt.php?id={book_id}')
 
     book_file_response = get_url_response(txt_file_url)
     check_for_redirect(book_file_response)
 
-    book_page_response = get_url_response(book_page_url)
+    book_page_response = get_url_response(book_url)
     soup = BeautifulSoup(book_page_response.text, "lxml")
 
     book = parse_book_page(soup)
@@ -89,7 +116,7 @@ def book_download(base_url: str, book_id):
     )
 
     download_txt(txt_file_url, filename)
-    download_image(urljoin(base_url, book["image_url"]), book["image_name"])
+    download_image(urljoin(book_url, book["image_url"]), book["image_name"])
 
     logger.info(f"Book genre: {book['genre']}")
 
@@ -115,14 +142,35 @@ def main():
     args = parser.parse_args()
 
     for book_id in range(args.start_id, args.end_id+1):
-        base_url = "https://tululu.org/"
+        base_url = f"https://tululu.org/b{book_id}"
+        book = {}
+        seconds_to_sleep = 5
+        try_count = 0
 
-        logger.info(f"Try to download book id{book_id}")
+        logger.info(f"Try to download book by link {base_url}")
+        while True:
+            try:
+                book = book_download(base_url, book_id)
+            except requests.HTTPError:
+                logger.warning("There is not ok response found. Skip the page.")
+                break
+            except requests.ConnectionError:
+                if try_count > 0:
+                    seconds_to_sleep = 20
+                elif try_count >= 5:
+                    logger.error(f"Can't process the book {base_url} after 5 tries. Skip book.")
+                    break
 
-        try:
-            book = book_download(base_url, book_id)
-        except requests.HTTPError:
-            logger.warning("Redirect url found. Skip page.")
+                logger.warning(f"There is no internet connection to server. "
+                               f"Another try after sleep {seconds_to_sleep}.")
+
+                sleep(seconds_to_sleep)
+                try_count += 1
+            else:
+                break
+
+        if "title" not in book.keys():
+            logger.warning('Book was not download.')
             continue
 
         logger.info(f"File {book['title']} saved successfully.")
