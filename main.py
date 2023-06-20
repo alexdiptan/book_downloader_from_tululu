@@ -1,3 +1,4 @@
+import urllib.parse
 from urllib.parse import urljoin, urlsplit
 import argparse
 
@@ -19,12 +20,14 @@ def save_to_file(url_content, path_to_file: Path):
 def download_txt(url, filename, folder="books/"):
     folder_path = Path.cwd() / folder
     Path.mkdir(folder_path, exist_ok=True)
-
     file_path = Path(folder_path, sanitize_filename(filename))
+    file_id = filename.split(".")[0]
+    payload = {"id": file_id}
 
-    url_response = get_url_response(url)
+    response = requests.get(url, payload)
+    response.raise_for_status()
 
-    save_to_file(url_response, file_path)
+    save_to_file(response, file_path)
 
     return file_path
 
@@ -34,18 +37,12 @@ def download_image(book_img_url: str, filename, folder="images/"):
     Path.mkdir(folder_path, exist_ok=True)
     file_path = Path(folder_path, sanitize_filename(filename))
 
-    url_response = get_url_response(book_img_url)
-
-    save_to_file(url_response, file_path)
-
-    return file_path
-
-
-def get_url_response(url: str):
-    response = requests.get(url)
+    response = requests.get(book_img_url)
     response.raise_for_status()
 
-    return response
+    save_to_file(response, file_path)
+
+    return file_path
 
 
 def check_for_redirect(response):
@@ -53,60 +50,35 @@ def check_for_redirect(response):
         raise requests.HTTPError()
 
 
-def get_comments(soup):
+def parse_book_page(soup):
+    author = soup.select_one(".ow_px_td h1").text.split("::")[1].strip()
+    title = soup.select_one(".ow_px_td h1").text.split("::")[0].strip()
+    genre = soup.select_one("span.d_book").text.split(":")[1].strip()
+    book_img_url = soup.select_one(".bookimage img")["src"]
+    book_img_name = urlsplit(book_img_url).path.split("/")[-1]
+
     raw_comments = soup.select(".texts")
     comments = [comment.select_one(".black").text for comment in raw_comments]
 
-    return comments
-
-
-def get_title(soup):
-    title = soup.select_one(".ow_px_td h1").text.split("::")
-
-    return title[0].strip()
-
-
-def get_author(soup):
-    author = soup.select_one(".ow_px_td h1").text.split("::")
-
-    return author[1].strip()
-
-
-def get_genre(soup):
-    genre = soup.select_one("span.d_book").text.split(":")[1].strip()
-
-    return genre.strip()
-
-
-def get_book_image(soup):
-    book_img_url = soup.select_one(".bookimage img")["src"]
-
-    return book_img_url
-
-
-def parse_book_page(soup):
-    book_img_url = get_book_image(soup)
-    book_img_name = urlsplit(book_img_url).path.split("/")[-1]
-
     book = {
-        "author": get_author(soup),
-        "title": get_title(soup),
-        "genre": get_genre(soup),
+        "author": author,
+        "title": title,
+        "genre": genre,
         "image_name": book_img_name,
         "image_url": book_img_url,
-        "comments": get_comments(soup),
+        "comments": comments,
     }
 
     return book
 
 
-def book_download(book_url: str, book_id: int):
-    txt_file_url = urljoin(book_url, f'txt.php?id={book_id}')
+def download_book(book_url: str, book_id: int):
+    url_parts = urlsplit(book_url)
+    txt_file_url = f"{url_parts.scheme}://{url_parts.netloc}/txt.php"
 
-    book_file_response = get_url_response(txt_file_url)
-    check_for_redirect(book_file_response)
-
-    book_page_response = get_url_response(book_url)
+    book_page_response = requests.get(urljoin(book_url, f"b{book_id}/"))
+    book_page_response.raise_for_status()
+    check_for_redirect(book_page_response)
     soup = BeautifulSoup(book_page_response.text, "lxml")
 
     book = parse_book_page(soup)
@@ -142,15 +114,15 @@ def main():
     args = parser.parse_args()
 
     for book_id in range(args.start_id, args.end_id+1):
-        base_url = f"https://tululu.org/b{book_id}"
+        book_url = f"https://tululu.org/"
         book = {}
         seconds_to_sleep = 5
         try_count = 0
 
-        logger.info(f"Try to download book by link {base_url}")
+        logger.info(f"Try to download book by link {book_url}b{book_id}/")
         while True:
             try:
-                book = book_download(base_url, book_id)
+                book = download_book(book_url, book_id)
             except requests.HTTPError:
                 logger.warning("There is not ok response found. Skip the page.")
                 break
@@ -158,7 +130,7 @@ def main():
                 if try_count > 0:
                     seconds_to_sleep = 20
                 elif try_count >= 5:
-                    logger.error(f"Can't process the book {base_url} after 5 tries. Skip book.")
+                    logger.error(f"Can't process the book {book_url}b{book_id}/ after 5 tries. Skip book.")
                     break
 
                 logger.warning(f"There is no internet connection to server. "
