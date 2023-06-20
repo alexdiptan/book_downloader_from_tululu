@@ -1,4 +1,3 @@
-import urllib.parse
 from urllib.parse import urljoin, urlsplit
 import argparse
 
@@ -73,8 +72,7 @@ def parse_book_page(soup):
 
 
 def download_book(book_url: str, book_id: int):
-    url_parts = urlsplit(book_url)
-    txt_file_url = f"{url_parts.scheme}://{url_parts.netloc}/txt.php"
+    txt_file_url = urljoin(book_url, "txt.php")
 
     book_page_response = requests.get(urljoin(book_url, f"b{book_id}/"))
     book_page_response.raise_for_status()
@@ -83,9 +81,7 @@ def download_book(book_url: str, book_id: int):
 
     book = parse_book_page(soup)
 
-    filename = "{}. {}.txt".format(
-        book_id, sanitize_filename(book['title']).strip()
-    )
+    filename = "{}. {}.txt".format(book_id, sanitize_filename(book["title"]).strip())
 
     download_txt(txt_file_url, filename)
     download_image(urljoin(book_url, book["image_url"]), book["image_name"])
@@ -100,7 +96,9 @@ def download_book(book_url: str, book_id: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Download books from library tululu.org')
+    parser = argparse.ArgumentParser(
+        description="Download books from library tululu.org"
+    )
     parser.add_argument(
         "start_id",
         type=int,
@@ -113,7 +111,7 @@ def main():
     )
     args = parser.parse_args()
 
-    for book_id in range(args.start_id, args.end_id+1):
+    for book_id in range(args.start_id, args.end_id + 1):
         book_url = f"https://tululu.org/"
         book = {}
         seconds_to_sleep = 5
@@ -130,11 +128,15 @@ def main():
                 if try_count > 0:
                     seconds_to_sleep = 20
                 elif try_count >= 5:
-                    logger.error(f"Can't process the book {book_url}b{book_id}/ after 5 tries. Skip book.")
+                    logger.error(
+                        f"Can't process the book {book_url}b{book_id}/ after 5 tries. Skip book."
+                    )
                     break
 
-                logger.warning(f"There is no internet connection to server. "
-                               f"Another try after sleep {seconds_to_sleep}.")
+                logger.warning(
+                    f"There is no internet connection to server. "
+                    f"Another try after sleep {seconds_to_sleep}."
+                )
 
                 sleep(seconds_to_sleep)
                 try_count += 1
@@ -142,7 +144,7 @@ def main():
                 break
 
         if "title" not in book.keys():
-            logger.warning('Book was not download.')
+            logger.warning("Book was not download.")
             continue
 
         logger.info(f"File {book['title']} saved successfully.")
