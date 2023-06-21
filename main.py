@@ -143,11 +143,10 @@ def main():
             else:
                 break
 
-        if "title" not in book.keys():
+        try:
+            logger.info(f"File {book['title']} saved successfully.")
+        except KeyError:
             logger.warning("Book was not download.")
-            continue
-
-        logger.info(f"File {book['title']} saved successfully.")
 
 
 if __name__ == "__main__":
