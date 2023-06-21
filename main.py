@@ -71,10 +71,10 @@ def parse_book_page(soup):
     return book
 
 
-def download_book(book_url: str, book_id: int):
-    txt_file_url = urljoin(book_url, "txt.php")
+def download_book(url: str, book_id: int):
+    txt_file_url = urljoin(url, "txt.php")
 
-    book_page_response = requests.get(urljoin(book_url, f"b{book_id}/"))
+    book_page_response = requests.get(urljoin(url, f"b{book_id}/"))
     book_page_response.raise_for_status()
     check_for_redirect(book_page_response)
     soup = BeautifulSoup(book_page_response.text, "lxml")
@@ -84,7 +84,7 @@ def download_book(book_url: str, book_id: int):
     filename = "{}. {}.txt".format(book_id, sanitize_filename(book["title"]).strip())
 
     download_txt(txt_file_url, filename)
-    download_image(urljoin(book_url, book["image_url"]), book["image_name"])
+    download_image(urljoin(url, book["image_url"]), book["image_name"])
 
     logger.info(f"Book genre: {book['genre']}")
 
@@ -112,15 +112,15 @@ def main():
     args = parser.parse_args()
 
     for book_id in range(args.start_id, args.end_id + 1):
-        book_url = f"https://tululu.org/"
+        url = f"https://tululu.org/"
         book = {}
         seconds_to_sleep = 5
         try_count = 0
 
-        logger.info(f"Try to download book by link {book_url}b{book_id}/")
+        logger.info(f"Try to download book by link {url}b{book_id}/")
         while True:
             try:
-                book = download_book(book_url, book_id)
+                book = download_book(url, book_id)
             except requests.HTTPError:
                 logger.warning("There is not ok response found. Skip the page.")
                 break
@@ -129,7 +129,7 @@ def main():
                     seconds_to_sleep = 20
                 elif try_count >= 5:
                     logger.error(
-                        f"Can't process the book {book_url}b{book_id}/ after 5 tries. Skip book."
+                        f"Can't process the book {url}b{book_id}/ after 5 tries. Skip book."
                     )
                     break
 
