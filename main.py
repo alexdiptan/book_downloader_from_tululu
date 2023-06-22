@@ -141,12 +141,8 @@ def main():
                 sleep(seconds_to_sleep)
                 try_count += 1
             else:
+                logger.info(f"File {book['title']} saved successfully.")
                 break
-
-        try:
-            logger.info(f"File {book['title']} saved successfully.")
-        except KeyError:
-            logger.warning("Book was not download.")
 
 
 if __name__ == "__main__":
